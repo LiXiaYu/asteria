@@ -333,12 +333,12 @@ struct AIR_Traits_declare_variable
         // Inject the variable into the current context.
         auto var = gcoll->create_variable();
         Reference::S_variable xref = { ::std::move(var) };
-        ctx.open_named_reference(sp.name) = xref;  // it'll be used later so don't move!
+        auto& ref = ctx.open_named_reference(sp.name) = ::std::move(xref);
         if(qhooks)
           qhooks->on_variable_declare(sp.sloc, sp.name);
 
         // Push a copy of the reference onto the stack.
-        ctx.stack().push_back(::std::move(xref));
+        ctx.stack().push_back(ref);
         return air_status_next;
       }
   };
@@ -661,10 +661,7 @@ struct AIR_Traits_for_each_statement
             for(int64_t i = 0;  i < arr.ssize();  ++i) {
               // Set the key which is the subscript of the mapped element in the array.
               vkey->initialize(i, true);
-
-              // Set the mapped reference.
-              Reference::M_array_index xmod = { i };
-              mapped.zoom_in(::std::move(xmod));
+              mapped.push_modifier_array_index(i);
 
               // Execute the loop body.
               status = do_execute_block(sp.queue_body, ctx_for);
@@ -677,7 +674,7 @@ struct AIR_Traits_for_each_statement
                 return status;
 
               // Restore the mapped reference.
-              mapped.zoom_out();
+              mapped.pop_modifier();
             }
             return air_status_next;
           }
@@ -687,10 +684,7 @@ struct AIR_Traits_for_each_statement
             for(auto it = obj.begin();  it != obj.end();  ++it) {
               // Set the key which is the key of this element in the object.
               vkey->initialize(it->first.rdstr(), true);
-
-              // Set the mapped reference.
-              Reference::M_object_key xmod = { it->first.rdstr() };
-              mapped.zoom_in(::std::move(xmod));
+              mapped.push_modifier_object_key(it->first);
 
               // Execute the loop body.
               status = do_execute_block(sp.queue_body, ctx_for);
@@ -703,7 +697,7 @@ struct AIR_Traits_for_each_statement
                 return status;
 
               // Restore the mapped reference.
-              mapped.zoom_out();
+              mapped.pop_modifier();
             }
             return air_status_next;
           }
@@ -940,14 +934,14 @@ struct AIR_Traits_simple_status
       }
   };
 
-struct AIR_Traits_glvalue_to_prvalue
+struct AIR_Traits_convert_to_temporary
   {
     // `up` is unused.
     // `sp` is unused.
 
     static
     const Source_Location&
-    get_symbols(const AIR_Node::S_glvalue_to_prvalue& altr)
+    get_symbols(const AIR_Node::S_convert_to_temporary& altr)
       {
         return altr.sloc;
       }
@@ -956,10 +950,7 @@ struct AIR_Traits_glvalue_to_prvalue
     AIR_Status
     execute(Executive_Context& ctx)
       {
-        // If the current reference is a constant or temporary, don't do anything.
-        auto& self = ctx.stack().mut_back();
-        if(!self.is_prvalue())
-          self.mutate_into_temporary();
+        ctx.stack().mut_back().mutate_into_temporary();
         return air_status_next;
       }
   };
@@ -1312,7 +1303,7 @@ struct AIR_Traits_function_call
         if(!value.is_function())
           ASTERIA_THROW("Attempt to call a non-function (value `$1`)", value);
 
-        return do_function_call_common(ctx.stack().mut_back().zoom_out(), sloc, ctx,
+        return do_function_call_common(ctx.stack().mut_back().pop_modifier(), sloc, ctx,
                                        value.as_function(), static_cast<PTC_Aware>(up.p8[0]),
                                        ::std::move(alt_stack));
       }
@@ -1341,9 +1332,7 @@ struct AIR_Traits_member_access
     AIR_Status
     execute(Executive_Context& ctx, const phsh_string& name)
       {
-        // Append a modifier to the reference at the top.
-        Reference::M_object_key xmod = { name };
-        ctx.stack().mut_back().zoom_in(::std::move(xmod));
+        ctx.stack().mut_back().push_modifier_object_key(name);
         return air_status_next;
       }
   };
@@ -1585,15 +1574,13 @@ struct AIR_Traits_apply_operator_subscr
         switch(do_tmask_of(rhs)) {
           case tmask_integer: {
             ROCKET_ASSERT(rhs.is_integer());
-            Reference::M_array_index xmod = { rhs.as_integer() };
-            ctx.stack().mut_back().zoom_in(::std::move(xmod));
+            ctx.stack().mut_back().push_modifier_array_index(rhs.as_integer());
             return air_status_next;
           }
 
           case tmask_string: {
             ROCKET_ASSERT(rhs.is_string());
-            Reference::M_object_key xmod = { rhs.as_string() };
-            ctx.stack().mut_back().zoom_in(::std::move(xmod));
+            ctx.stack().mut_back().push_modifier_object_key(rhs.as_string());
             return air_status_next;
           }
 
@@ -3966,7 +3953,7 @@ struct AIR_Traits_apply_operator_head
     execute(Executive_Context& ctx)
       {
         // This operator is binary. `assign` is ignored.
-        ctx.stack().mut_back().zoom_in(Reference::M_array_head());
+        ctx.stack().mut_back().push_modifier_array_head();
         return air_status_next;
       }
   };
@@ -3988,7 +3975,7 @@ struct AIR_Traits_apply_operator_tail
     execute(Executive_Context& ctx)
       {
         // This operator is binary. `assign` is ignored.
-        ctx.stack().mut_back().zoom_in(Reference::M_array_tail());
+        ctx.stack().mut_back().push_modifier_array_tail();
         return air_status_next;
       }
   };
@@ -4260,10 +4247,10 @@ struct AIR_Traits_variadic_call
 
           case type_function: {
             const auto gfunc = ::std::move(value.open_function());
-            ctx.stack().mut_back().zoom_out();
 
             // Pass an empty argument stack to get the number of arguments to generate.
             // This inreadonlys the `self` reference so we have to copy it first.
+            ctx.stack().mut_back().pop_modifier();
             ctx.stack().push_back(ctx.stack().back());
             do_invoke_nontail(ctx.stack().mut_back(), sloc, ctx, gfunc, ::std::move(alt_stack));
             value = ctx.stack().back().dereference_readonly();
@@ -4316,7 +4303,7 @@ struct AIR_Traits_variadic_call
         if(!value.is_function())
           ASTERIA_THROW("Attempt to call a non-function (value `$1`)", value);
 
-        return do_function_call_common(ctx.stack().mut_back().zoom_out(), sloc, ctx,
+        return do_function_call_common(ctx.stack().mut_back().pop_modifier(), sloc, ctx,
                                        value.as_function(), static_cast<PTC_Aware>(up.p8[0]),
                                        ::std::move(alt_stack));
       }
@@ -4437,7 +4424,7 @@ struct AIR_Traits_import_call
         path.assign(abspath);
 
         auto& self = ctx.stack().mut_back();
-        if(self.is_lvalue())
+        if(self.is_variable())
           self.dereference_mutable() = path;
 
         // Compile the script file into a function object.
@@ -4821,7 +4808,7 @@ rebind_opt(Abstract_Context& ctx)
       case index_throw_statement:
       case index_assert_statement:
       case index_simple_status:
-      case index_glvalue_to_prvalue:
+      case index_convert_to_temporary:
       case index_push_global_reference:
         // There is nothing to rebind.
         return nullopt;
@@ -4990,9 +4977,9 @@ solidify(AVMC_Queue& queue)
         return do_solidify<AIR_Traits_simple_status>(queue,
                                      this->m_stor.as<index_simple_status>());
 
-      case index_glvalue_to_prvalue:
-        return do_solidify<AIR_Traits_glvalue_to_prvalue>(queue,
-                                     this->m_stor.as<index_glvalue_to_prvalue>());
+      case index_convert_to_temporary:
+        return do_solidify<AIR_Traits_convert_to_temporary>(queue,
+                                     this->m_stor.as<index_convert_to_temporary>());
 
       case index_push_global_reference:
         return do_solidify<AIR_Traits_push_global_reference>(queue,
@@ -5302,7 +5289,7 @@ enumerate_variables(Variable_Callback& callback)
       case index_throw_statement:
       case index_assert_statement:
       case index_simple_status:
-      case index_glvalue_to_prvalue:
+      case index_convert_to_temporary:
       case index_push_global_reference:
       case index_push_local_reference:
         return callback;

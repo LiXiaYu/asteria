@@ -21,15 +21,18 @@ Executive_Context(M_function, Global_Context& global, Reference_Stack& stack,
     m_zvarg(zvarg)
   {
     // Set the `this` reference.
-    // If the self reference is void, it is likely that `this` isn't ever referenced in
-    // this function, so perform lazy initialization to avoid this overhead.
-    if(!self.is_void() && !(self.is_constant() && self.dereference_readonly().is_null()))
+    // If the self reference is null, it is likely that `this` isn't ever referenced
+    // in this function, so perform lazy initialization to avoid this overhead.
+    if(self.is_uninit() || self.is_void())
+      ASTERIA_THROW("Invalid `this` reference passed to `$1`", zvarg->func());
+
+    if(!self.is_temporary() || !self.dereference_readonly().is_null())
       this->do_set_named_reference(nullptr, sref("__this"), ::std::move(self));
 
     // Set arguments. As arguments are evaluated from left to right, the reference at
     // the top is the last argument.
-    auto bptr = stack.bottom();
-    auto eptr = stack.top();
+    auto bptr = ::std::make_move_iterator(stack.bottom());
+    auto eptr = ::std::make_move_iterator(stack.top());
     bool variadic = false;
 
     for(const auto& name : params) {
@@ -45,7 +48,7 @@ Executive_Context(M_function, Global_Context& global, Reference_Stack& stack,
       // Try popping an argument from `stack` and assign it to this parameter.
       // If no more arguments follow, declare a constant `null`.
       if(ROCKET_EXPECT(bptr != eptr))
-        this->do_set_named_reference(nullptr, name, ::std::move(*(bptr++)));
+        this->do_set_named_reference(nullptr, name, *(bptr++));
       else
         this->do_set_named_reference(nullptr, name, Reference::S_constant());
     }
@@ -56,8 +59,7 @@ Executive_Context(M_function, Global_Context& global, Reference_Stack& stack,
 
     // Stash variadic arguments, if any.
     if(ROCKET_UNEXPECT(bptr != eptr))
-      this->m_lazy_args.append(::std::make_move_iterator(bptr),
-                     ::std::make_move_iterator(eptr));
+      this->m_lazy_args.append(bptr, eptr);
   }
 
 Executive_Context::
