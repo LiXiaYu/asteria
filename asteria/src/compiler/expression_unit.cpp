@@ -62,11 +62,13 @@ generate_code(cow_vector<AIR_Node>& code, const Compiler_Options& opts,
 
         for(;;) {
           // Look for the name in the current context.
-          qref = qctx->get_named_reference_opt(altr.name);
+          size_t hint = 0;
+          qref = qctx->get_named_reference_with_hint_opt(hint, altr.name);
           if(qref) {
             // A reference declared later has been found.
             // Record the context depth for later lookups.
-            AIR_Node::S_push_local_reference xnode = { altr.sloc, depth, altr.name };
+            AIR_Node::S_push_local_reference xnode = { altr.sloc, depth,
+                                                       (uint16_t)hint, altr.name };
             code.emplace_back(::std::move(xnode));
             return code;
           }

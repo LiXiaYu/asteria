@@ -120,6 +120,7 @@ class AIR_Node
       {
         Source_Location sloc;
         uint32_t depth;
+        uint16_t hint;
         phsh_string name;
       };
 

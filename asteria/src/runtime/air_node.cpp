@@ -945,7 +945,7 @@ struct Traits_push_global_reference
 
 struct Traits_push_local_reference
   {
-    // `up` is the depth.
+    // `up` is the depth and hint.
     // `sp` is the source location and name;
 
     static const Source_Location&
@@ -959,6 +959,7 @@ struct Traits_push_local_reference
       {
         AVMC_Queue::Uparam up;
         up.u32 = altr.depth;
+        up.u16 = altr.hint;
         return up;
       }
 
@@ -977,7 +978,8 @@ struct Traits_push_local_reference
           qctx = qctx->get_parent_opt();
 
         // Look for the name in the context.
-        auto qref = qctx->get_named_reference_opt(name);
+        size_t hint = up.u16;
+        auto qref = qctx->get_named_reference_with_hint_opt(hint, name);
         if(!qref)
           ASTERIA_THROW_RUNTIME_ERROR("undeclared identifier `$1`", name);
 
