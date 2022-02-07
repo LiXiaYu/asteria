@@ -123,7 +123,7 @@ struct char_traits<char>
         size_t k = 0;
         ::flockfile(fp);
         while(k < n) {
-          int ch = ::fgetc_unlocked(fp);
+          int ch = ::getc_unlocked(fp);
           if(ROCKET_UNEXPECT(ch == EOF))
             break;
           p[k++] = (char)ch;
@@ -141,7 +141,7 @@ struct char_traits<char>
         size_t k = 0;
         ::flockfile(fp);
         while(k < n) {
-          int ch = ::fputc_unlocked(p[k], fp);
+          int ch = ::putc_unlocked(p[k], fp);
           if(ROCKET_UNEXPECT(ch == EOF))
             break;
           k++;
@@ -257,7 +257,7 @@ struct char_traits<wchar_t>
         size_t k = 0;
         ::flockfile(fp);
         while(k < n) {
-          ::wint_t ch = ::fgetwc_unlocked(fp);
+          ::wint_t ch = ::getwc_unlocked(fp);
           if(ROCKET_UNEXPECT(ch == WEOF))
             break;
           p[k++] = (wchar_t)ch;
@@ -275,7 +275,7 @@ struct char_traits<wchar_t>
         size_t k = 0;
         ::flockfile(fp);
         while(k < n) {
-          ::wint_t ch = ::fputwc_unlocked(p[k], fp);
+          ::wint_t ch = ::putwc_unlocked(p[k], fp);
           if(ROCKET_UNEXPECT(ch == WEOF))
             break;
           k++;

@@ -24,9 +24,10 @@ std_math_exp(V_real base, V_real y)
     if(base == 2)
       return ::exp2(y);
 
+#ifndef __APPLE__
     if(base == 10)
       return ::exp10(y);
-
+#endif
     return ::pow(base, y);
   }
 
@@ -81,7 +82,7 @@ pair<V_real, V_real>
 std_math_sincos(V_real x)
   {
     double sin, cos;
-    ::sincos(x, &sin, &cos);
+    ::__sincos(x, &sin, &cos);
     return ::std::make_pair(sin, cos);
   }
 

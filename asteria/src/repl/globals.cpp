@@ -8,7 +8,7 @@
 #include <stdarg.h>  // va_list, va_start(), va_end()
 #include <stdlib.h>  // exit(), quick_exit()
 #include <stdio.h>  // fflush(), fprintf(), stderr
-
+#include <cstdlib>
 namespace asteria {
 
 const char repl_version[] = PACKAGE_STRING;

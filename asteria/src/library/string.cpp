@@ -6,7 +6,7 @@
 #include "../runtime/argument_reader.hpp"
 #include "../utils.hpp"
 #define PCRE2_CODE_UNIT_WIDTH 8
-#include <pcre2.h>
+#include "/opt/homebrew/Cellar/pcre2/10.36/include/pcre2.h"
 
 namespace asteria {
 namespace {

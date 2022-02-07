@@ -16,6 +16,9 @@
 #include <unistd.h>  // ::daemon()
 #include <time.h>  // ::clock_gettime()
 
+#include <crt_externs.h>
+#define environ (*_NSGetEnviron())
+
 namespace asteria {
 namespace {
 
@@ -356,7 +359,7 @@ V_object
 std_system_env_get_variables()
   {
     V_object vars;
-    const char* const* vpos = ::environ;
+    const char* const* vpos = environ;
     while(const char* str = *(vpos++)) {
       // The key is terminated by an equals sign.
       const char* equ = ::std::strchr(str, '=');
@@ -483,10 +486,17 @@ std_system_proc_invoke(V_string cmd, Opt_array argv, Opt_array envp)
 void
 std_system_proc_daemonize()
   {
+#ifndef __APPLE__
     if(::daemon(1, 0) != 0)
       ASTERIA_THROW("Could not daemonize process\n"
                     "[`daemon()` failed: $1]",
                     format_errno(errno));
+#else
+    ASTERIA_THROW("Mac could not daemonize process\n"
+                    "[`daemon()` failed: $1]",
+                    format_errno(errno));
+#endif
+
   }
 
 V_object

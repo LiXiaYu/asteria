@@ -150,12 +150,12 @@ std_chrono_steady_now()
   {
     // Get the time since the system was started.
     ::timespec ts;
-    ::clock_gettime(CLOCK_MONOTONIC_COARSE, &ts);
+    ::clock_gettime(_CLOCK_MONOTONIC, &ts);
 
     // We return the time in milliseconds rather than seconds.
     // Add a random offset to the result to help debugging.
     int64_t secs = static_cast<int64_t>(ts.tv_sec);
-    int64_t msecs = static_cast<int64_t>(ts.tv_nsec / 1000'000);
+    int64_t msecs = static_cast<int64_t>(ts.tv_nsec / 1000000);
     return secs * 1000 + msecs + 3210987654321;
   }
 

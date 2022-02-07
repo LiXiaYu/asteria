@@ -786,59 +786,59 @@ class stringified_key
 
     stringified_key(signed char val)
       noexcept
-      { ::std::sprintf(this->m_temp, "%d", val);  }
+      { ::sprintf(this->m_temp, "%d", val);  }
 
     stringified_key(unsigned char val)
       noexcept
-      { ::std::sprintf(this->m_temp, "%u", val);  }
+      { ::sprintf(this->m_temp, "%u", val);  }
 
     stringified_key(signed short val)
       noexcept
-      { ::std::sprintf(this->m_temp, "%d", val);  }
+      { ::sprintf(this->m_temp, "%d", val);  }
 
     stringified_key(unsigned short val)
       noexcept
-      { ::std::sprintf(this->m_temp, "%u", val);  }
+      { ::sprintf(this->m_temp, "%u", val);  }
 
     stringified_key(signed val)
       noexcept
-      { ::std::sprintf(this->m_temp, "%d", val);  }
+      { ::sprintf(this->m_temp, "%d", val);  }
 
     stringified_key(unsigned val)
       noexcept
-      { ::std::sprintf(this->m_temp, "%u", val);  }
+      { ::sprintf(this->m_temp, "%u", val);  }
 
     stringified_key(signed long val)
       noexcept
-      { ::std::sprintf(this->m_temp, "%ld", val);  }
+      { ::sprintf(this->m_temp, "%ld", val);  }
 
     stringified_key(unsigned long val)
       noexcept
-      { ::std::sprintf(this->m_temp, "%lu", val);  }
+      { ::sprintf(this->m_temp, "%lu", val);  }
 
     stringified_key(signed long long val)
       noexcept
-      { ::std::sprintf(this->m_temp, "%lld", val);  }
+      { ::sprintf(this->m_temp, "%lld", val);  }
 
     stringified_key(unsigned long long val)
       noexcept
-      { ::std::sprintf(this->m_temp, "%llu", val);  }
+      { ::sprintf(this->m_temp, "%llu", val);  }
 
     template<typename valueT,
     ROCKET_ENABLE_IF(is_enum<valueT>::value)>
     stringified_key(valueT val)
       noexcept
-      { ::std::sprintf(this->m_temp, "%lld", static_cast<long long>(val));  }
+      { ::sprintf(this->m_temp, "%lld", static_cast<long long>(val));  }
 
     stringified_key(const void* val)
       noexcept
-      { ::std::sprintf(this->m_temp, "%p", val);  }
+      { ::sprintf(this->m_temp, "%p", val);  }
 
     template<typename funcT,
     ROCKET_ENABLE_IF(is_function<funcT>::value)>
     stringified_key(funcT* val)
       noexcept
-      { ::std::sprintf(this->m_temp, "%p", reinterpret_cast<void*>(val));  }
+      { ::sprintf(this->m_temp, "%p", reinterpret_cast<void*>(val));  }
 
     template<typename valueT,
     ROCKET_DISABLE_IF(is_scalar<valueT>::value)>

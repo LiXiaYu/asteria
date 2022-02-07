@@ -3,7 +3,7 @@ AC_CONFIG_SRCDIR([asteria/src])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 
-AC_PROG_CXX
+AC_PROG_CXX([clang])
 AC_LANG([C++])
 
 AM_INIT_AUTOMAKE([foreign subdir-objects])
@@ -11,8 +11,10 @@ AM_SILENT_RULES([yes])
 LT_INIT([disable-static])
 
 ## Check for required libraries
-AC_CHECK_LIB([rt], [clock_gettime], [], [AC_MSG_ERROR(clock and time library not found)])
-AC_CHECK_LIB([pcre2-8], [pcre2_compile_8], [], [AC_MSG_ERROR(PCRE2 library not found)])
+# Can't check them in my mac, so commint them.
+# export MACOSX_DEPLOYMENT_TARGET=11.1
+# AC_CHECK_LIB([rt], [clock_gettime], [], [AC_MSG_ERROR(clock and time library not found)])
+# AC_CHECK_LIB([pcre2-8], [pcre2_compile_8], [], [AC_MSG_ERROR(PCRE2 library not found)])
 
 ## Set up optional features
 AC_ARG_ENABLE([debug-checks], AS_HELP_STRING([--enable-debug-checks], [enable assertions]))
