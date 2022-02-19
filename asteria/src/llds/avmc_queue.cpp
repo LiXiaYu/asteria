@@ -12,7 +12,7 @@ namespace asteria {
 
 void
 AVMC_Queue::
-do_destroy_nodes() noexcept
+do_destroy_nodes(bool xfree) noexcept
   {
     auto next = this->m_bptr;
     const auto eptr = this->m_bptr + this->m_used;
@@ -28,10 +28,19 @@ do_destroy_nodes() noexcept
       if(qnode->meta_ver)
         delete qnode->pv_meta;
     }
+
 #ifdef ROCKET_DEBUG
     ::std::memset(this->m_bptr, 0xE6, this->m_estor * sizeof(Header));
 #endif
+
     this->m_used = 0xDEADBEEF;
+    if(!xfree)
+      return;
+
+    // Deallocate the old table.
+    auto bold = ::std::exchange(this->m_bptr, (Header*)0xDEADBEEF);
+    auto esold = ::std::exchange(this->m_estor, (size_t)0xBEEFDEAD);
+    ::rocket::freeN<Header>(bold, esold);
   }
 
 void
@@ -105,14 +114,13 @@ do_reserve_one(Uparam uparam, size_t size)
     return qnode;
   }
 
-AVMC_Queue&
+details_avmc_queue::Header*
 AVMC_Queue::
 do_append_trivial(Uparam uparam, Executor* exec, size_t size, const void* data_opt)
   {
-    auto qnode = this->do_reserve_one(uparam, size);
-
     // Copy source data if `data_opt` is non-null. Fill zeroes otherwise.
     // This operation will not throw exceptions.
+    auto qnode = this->do_reserve_one(uparam, size);
     if(data_opt)
       ::std::memcpy(qnode->sparam, data_opt, size);
     else if(size)
@@ -121,17 +129,15 @@ do_append_trivial(Uparam uparam, Executor* exec, size_t size, const void* data_o
     // Accept this node.
     qnode->pv_exec = exec;
     this->m_used += UINT32_C(1) + qnode->nheaders;
-    return *this;
+    return qnode;
   }
 
-AVMC_Queue&
+details_avmc_queue::Header*
 AVMC_Queue::
 do_append_nontrivial(Uparam uparam, Executor* exec, const Source_Location* sloc_opt,
                      Var_Getter* vget_opt, Relocator* reloc_opt, Destructor* dtor_opt,
                      size_t size, Constructor* ctor_opt, intptr_t ctor_arg)
   {
-    auto qnode = this->do_reserve_one(uparam, size);
-
     // Allocate metadata for this node.
     auto meta = ::rocket::make_unique<details_avmc_queue::Metadata>();
     uint8_t meta_ver = 1;
@@ -148,6 +154,7 @@ do_append_nontrivial(Uparam uparam, Executor* exec, const Source_Location* sloc_
 
     // Invoke the constructor if `ctor_opt` is non-null. Fill zeroes otherwise.
     // If an exception is thrown, there is no effect.
+    auto qnode = this->do_reserve_one(uparam, size);
     if(ctor_opt)
       ctor_opt(qnode, ctor_arg);
     else if(size)
@@ -157,6 +164,15 @@ do_append_nontrivial(Uparam uparam, Executor* exec, const Source_Location* sloc_
     qnode->pv_meta = meta.release();
     qnode->meta_ver = meta_ver;
     this->m_used += UINT32_C(1) + qnode->nheaders;
+    return qnode;
+  }
+
+AVMC_Queue&
+AVMC_Queue::
+finalize()
+  {
+    // TODO: Add JIT support.
+    this->do_reallocate(0);
     return *this;
   }
 
@@ -164,35 +180,32 @@ AIR_Status
 AVMC_Queue::
 execute(Executive_Context& ctx) const
   {
-    AIR_Status status = air_status_next;
     auto next = this->m_bptr;
     const auto eptr = this->m_bptr + this->m_used;
     while(ROCKET_EXPECT(next != eptr)) {
       auto qnode = next;
       next += UINT32_C(1) + qnode->nheaders;
 
-      if(qnode->meta_ver > 1) {
-        // Symbols are available.
-        ASTERIA_RUNTIME_TRY {
-          status = qnode->pv_meta->exec(ctx, qnode);
-        }
-        ASTERIA_RUNTIME_CATCH(Runtime_Error& except) {
-          except.push_frame_plain(qnode->pv_meta->syms, sref(""));
+      // Get the executor, which must always exist.
+      Executor* executor = qnode->pv_exec;
+      if(qnode->meta_ver != 0)
+        executor = qnode->pv_meta->exec;
+
+      ASTERIA_RUNTIME_TRY {
+        auto status = executor(ctx, qnode);
+        if(status != air_status_next)
+          return status;
+      }
+      ASTERIA_RUNTIME_CATCH(Runtime_Error& except) {
+        if(qnode->meta_ver == 1)
           throw;
-        }
+
+        // Symbols exist. Use them.
+        except.push_frame_plain(qnode->pv_meta->syms, sref(""));
+        throw;
       }
-      else if(qnode->meta_ver == 1) {
-        // Symbols are not available.
-        status = qnode->pv_meta->exec(ctx, qnode);
-      }
-      else {
-        // Symbols are not available.
-        status = qnode->pv_exec(ctx, qnode);
-      }
-      if(status != air_status_next)
-        break;
     }
-    return status;
+    return air_status_next;
   }
 
 void
@@ -205,9 +218,13 @@ get_variables(Variable_HashMap& staged, Variable_HashMap& temp) const
       auto qnode = next;
       next += UINT32_C(1) + qnode->nheaders;
 
-      // Get all variables from this node.
-      if((qnode->meta_ver >= 1) && qnode->pv_meta->vget_opt)
-        qnode->pv_meta->vget_opt(staged, temp, qnode);
+      // Get the variable enumeration callback, which is optional.
+      Var_Getter* vgetter = nullptr;
+      if(qnode->meta_ver != 0)
+        vgetter = qnode->pv_meta->vget_opt;
+
+      if(vgetter)
+        vgetter(staged, temp, qnode);
     }
   }
 

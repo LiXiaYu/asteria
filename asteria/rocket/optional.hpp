@@ -78,10 +78,8 @@ class optional
     // 19.6.3.3, assignment
     optional&
     operator=(nullopt_t) noexcept
-      {
-        this->m_stor.clear();
-        return *this;
-      }
+      { this->m_stor.clear();
+        return *this;  }
 
     optional&
     operator=(const value_type& value)
@@ -159,8 +157,17 @@ class optional
         return *this;
       }
 
+    // 19.6.3.4, swap
+    optional&
+    swap(optional& other)
+      noexcept(conjunction<is_nothrow_swappable<value_type>,
+                           is_nothrow_move_constructible<value_type>,
+                           is_nothrow_move_assignable<value_type>>::value)
+      { this->m_stor.swap(other.m_stor);
+        return *this;  }
+
   private:
-    [[noreturn]] ROCKET_NOINLINE reference
+    [[noreturn]] ROCKET_NEVER_INLINE reference
     do_throw_valueless() const
       {
         noadl::sprintf_and_throw<length_error>("variant: no value set");
@@ -277,21 +284,9 @@ class optional
     reference
     value_or_emplace(paramsT&&... params)
       {
-        if(!this->m_stor.empty())
-          return this->m_stor.mut_front();
-        else
-          return this->m_stor.emplace_back(::std::forward<paramsT>(params)...);
-      }
-
-    // 19.6.3.4, swap
-    optional&
-    swap(optional& other)
-      noexcept(conjunction<is_nothrow_swappable<value_type>,
-                           is_nothrow_move_constructible<value_type>,
-                           is_nothrow_move_assignable<value_type>>::value)
-      {
-        this->m_stor.swap(other.m_stor);
-        return *this;
+        return this->m_stor.empty()
+                 ? this->m_stor.emplace_back(::std::forward<paramsT>(params)...)
+                 : this->m_stor.mut_front();
       }
   };
 

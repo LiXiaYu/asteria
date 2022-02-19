@@ -35,11 +35,9 @@ class Recursion_Sentry
 
     Recursion_Sentry&
     operator=(const Recursion_Sentry& other)  // copy assignment
-      {
-        this->m_base = other.m_base;
+      { this->m_base = other.m_base;
         this->do_check();
-        return *this;
-      }
+        return *this;  }
 
   private:
     [[noreturn]] void
@@ -67,7 +65,7 @@ class Recursion_Sentry
 
     Recursion_Sentry&
     set_base(const void* base) noexcept
-      { return this->m_base = base, *this;  }
+      { this->m_base = base;  return *this;  }
   };
 
 }  // namespace asteria

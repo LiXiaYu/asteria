@@ -66,9 +66,18 @@ do_return_rebound_opt(bool dirty, NodeT&& xnode)
 bool
 do_solidify_nodes(AVMC_Queue& queue, const cow_vector<AIR_Node>& code)
   {
+    queue.clear();
     bool r = ::rocket::all_of(code, [&](const AIR_Node& node) { return node.solidify(queue);  });
-    queue.shrink_to_fit();
+    queue.finalize();
     return r;
+  }
+
+void
+do_solidify_nodes(cow_vector<AVMC_Queue>& queue, const cow_vector<cow_vector<AIR_Node>>& code)
+  {
+    queue.resize(code.size());
+    for(size_t k = 0;  k != code.size();  ++k)
+      do_solidify_nodes(queue.mut(k), code.at(k));
   }
 
 AIR_Status
@@ -411,12 +420,8 @@ struct Traits_switch_statement
     make_sparam(bool& /*reachable*/, const AIR_Node::S_switch_statement& altr)
       {
         Sparam_switch sp;
-        sp.queues_labels.reserve(altr.code_labels.size());
-        for(const auto& code : altr.code_labels)
-          do_solidify_nodes(sp.queues_labels.emplace_back(), code);
-        sp.queues_bodies.reserve(altr.code_bodies.size());
-        for(const auto& code : altr.code_bodies)
-          do_solidify_nodes(sp.queues_bodies.emplace_back(), code);
+        do_solidify_nodes(sp.queues_labels, altr.code_labels);
+        do_solidify_nodes(sp.queues_bodies, altr.code_bodies);
         sp.names_added = altr.names_added;
         return sp;
       }
@@ -1379,6 +1384,25 @@ struct Traits_return_value
       }
   };
 
+struct Traits_push_temporary
+  {
+    // `up` is unused.
+    // `sp` is the value to push.
+
+    static Value
+    make_sparam(bool& /*reachable*/, const AIR_Node::S_push_temporary& altr)
+      {
+        return altr.value;
+      }
+
+    ROCKET_FLATTEN static AIR_Status
+    execute(Executive_Context& ctx, const Value& value)
+      {
+        ctx.stack().push().set_temporary(value);
+        return air_status_next;
+      }
+  };
+
 enum : uint32_t
   {
     tmask_null      = UINT32_C(1) << type_null,
@@ -1396,17 +1420,6 @@ inline uint32_t
 do_tmask_of(const Value& val) noexcept
   {
     return UINT32_C(1) << val.type();
-  }
-
-int64_t
-do_icast(double value)
-  {
-    if(!is_convertible_to_integer(value)) {
-      ASTERIA_THROW_RUNTIME_ERROR(
-          "real value not representable as integer (value `$1`)",
-          value);
-    }
-    return static_cast<int64_t>(value);
   }
 
 struct Traits_apply_xop_inc_post
@@ -2374,7 +2387,7 @@ struct Traits_apply_xop_iround
 
           case tmask_real:
             ROCKET_ASSERT(rhs.is_real());
-            rhs = do_icast(::std::round(rhs.as_real()));
+            rhs = safe_double_to_int64(::std::round(rhs.as_real()));
             return air_status_next;
 
           default:
@@ -2419,7 +2432,7 @@ struct Traits_apply_xop_ifloor
 
           case tmask_real:
             ROCKET_ASSERT(rhs.is_real());
-            rhs = do_icast(::std::floor(rhs.as_real()));
+            rhs = safe_double_to_int64(::std::floor(rhs.as_real()));
             return air_status_next;
 
           default:
@@ -2464,7 +2477,7 @@ struct Traits_apply_xop_iceil
 
           case tmask_real:
             ROCKET_ASSERT(rhs.is_real());
-            rhs = do_icast(::std::ceil(rhs.as_real()));
+            rhs = safe_double_to_int64(::std::ceil(rhs.as_real()));
             return air_status_next;
 
           default:
@@ -2509,7 +2522,7 @@ struct Traits_apply_xop_itrunc
 
           case tmask_real:
             ROCKET_ASSERT(rhs.is_real());
-            rhs = do_icast(::std::trunc(rhs.as_real()));
+            rhs = safe_double_to_int64(::std::trunc(rhs.as_real()));
             return air_status_next;
 
           default:
@@ -4325,10 +4338,9 @@ struct Traits_import_call
         if(path.empty())
           ASTERIA_THROW_RUNTIME_ERROR("empty path specified for `import`");
 
-        if((path[0] != '/') && (sp.sloc.file()[0] == '/'))
-          path.assign(sp.sloc.file())
-              .erase(path.rfind('/') + 1)
-              .append(value.as_string());
+        const auto& src_path = sp.sloc.file();
+        if((path[0] != '/') && (src_path[0] == '/'))
+          path.insert(0, src_path, 0, src_path.rfind('/') + 1);
 
         auto abspath = ::rocket::make_unique_handle(::realpath(path.safe_c_str(), nullptr), ::free);
         if(!abspath)
@@ -5009,6 +5021,7 @@ struct solidify_disp<TraitsT, NodeT, false, true>  // uparam, sparam
     append(bool& reachable, AVMC_Queue& queue, const NodeT& altr)
       {
         queue.append(thunk, symbol_getter<TraitsT, NodeT>::opt(altr),
+            AVMC_Queue::Uparam(),
             TraitsT::make_sparam(reachable, altr));
       }
   };
@@ -5070,7 +5083,6 @@ rebind_opt(Abstract_Context& ctx) const
   {
     switch(this->index()) {
       case index_clear_stack:
-        // There is nothing to rebind.
         return nullopt;
 
       case index_execute_block: {
@@ -5088,7 +5100,6 @@ rebind_opt(Abstract_Context& ctx) const
 
       case index_declare_variable:
       case index_initialize_variable:
-        // There is nothing to rebind.
         return nullopt;
 
       case index_if_statement: {
@@ -5198,7 +5209,6 @@ rebind_opt(Abstract_Context& ctx) const
       case index_simple_status:
       case index_check_argument:
       case index_push_global_reference:
-        // There is nothing to rebind.
         return nullopt;
 
       case index_push_local_reference: {
@@ -5218,13 +5228,16 @@ rebind_opt(Abstract_Context& ctx) const
         if(!qref)
           return nullopt;
 
-        // Bind it now.
+        if(qref->is_temporary()) {
+          S_push_temporary xnode = { qref->dereference_readonly() };
+          return ::std::move(xnode);
+        }
+
         S_push_bound_reference xnode = { *qref };
         return ::std::move(xnode);
       }
 
       case index_push_bound_reference:
-        // There is nothing to rebind.
         return nullopt;
 
       case index_define_function: {
@@ -5276,7 +5289,6 @@ rebind_opt(Abstract_Context& ctx) const
       case index_define_null_variable:
       case index_single_step_trap:
       case index_variadic_call:
-        // There is nothing to rebind.
         return nullopt;
 
       case index_defer_expression: {
@@ -5294,7 +5306,6 @@ rebind_opt(Abstract_Context& ctx) const
       case index_import_call:
       case index_declare_reference:
       case index_initialize_reference:
-        // There is nothing to rebind.
         return nullopt;
 
       case index_catch_expression: {
@@ -5310,7 +5321,7 @@ rebind_opt(Abstract_Context& ctx) const
       }
 
       case index_return_value:
-        // There is nothing to rebind.
+      case index_push_temporary:
         return nullopt;
 
       default:
@@ -5649,6 +5660,10 @@ solidify(AVMC_Queue& queue) const
         return do_solidify<Traits_return_value>(queue,
                        this->m_stor.as<index_return_value>());
 
+      case index_push_temporary:
+        return do_solidify<Traits_push_temporary>(queue,
+                       this->m_stor.as<index_push_temporary>());
+
       default:
         ASTERIA_TERMINATE("invalid AIR node type (index `$1`)", this->index());
     }
@@ -5789,6 +5804,12 @@ get_variables(Variable_HashMap& staged, Variable_HashMap& temp) const
 
       case index_return_value:
         return;
+
+      case index_push_temporary: {
+        const auto& altr = this->m_stor.as<index_push_temporary>();
+        altr.value.get_variables(staged, temp);
+        return;
+      }
 
       default:
         ASTERIA_TERMINATE("invalid AIR node type (index `$1`)", this->index());

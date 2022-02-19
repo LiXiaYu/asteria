@@ -9,10 +9,10 @@
 
 namespace asteria {
 
-class alignas(max_align_t) Value
+class Value
   {
   private:
-    ::rocket::variant<
+    using storage = ::rocket::variant<
       ROCKET_CDR(
         ,V_null      // 0,
         ,V_boolean   // 1,
@@ -23,64 +23,75 @@ class alignas(max_align_t) Value
         ,V_function  // 6,
         ,V_array     // 7,
         ,V_object    // 8,
-      )>
-      m_stor;
+      )>;
+
+    union {
+      char m_bytes[sizeof(storage)];
+      storage m_stor;
+    };
 
   public:
     // Constructors and assignment operators
     constexpr
     Value(nullopt_t = nullopt) noexcept
-      : m_stor()
+      : m_bytes()
       { }
 
     template<typename XValT,
     ROCKET_ENABLE_IF(details_value::Valuable<XValT>::direct_init::value)>
     Value(XValT&& xval)
       noexcept(::std::is_nothrow_constructible<decltype(m_stor),
-                  typename details_value::Valuable<XValT>::via_type&&>::value)
-      : m_stor(typename details_value::Valuable<XValT>::via_type(
-                           ::std::forward<XValT>(xval)))
+                        typename details_value::Valuable<XValT>::via_type&&>::value)
+      : m_stor(typename details_value::Valuable<XValT>::via_type(::std::forward<XValT>(xval)))
       { }
 
     template<typename XValT,
     ROCKET_DISABLE_IF(details_value::Valuable<XValT>::direct_init::value)>
     Value(XValT&& xval)
       noexcept(::std::is_nothrow_assignable<decltype(m_stor)&,
-                  typename details_value::Valuable<XValT>::via_type&&>::value)
-      {
-        details_value::Valuable<XValT>::assign(this->m_stor,
-                           ::std::forward<XValT>(xval));
-      }
+                        typename details_value::Valuable<XValT>::via_type&&>::value)
+      : m_bytes()
+      { details_value::Valuable<XValT>::assign(this->m_stor, ::std::forward<XValT>(xval));  }
 
     template<typename XValT,
     ROCKET_ENABLE_IF_HAS_TYPE(typename details_value::Valuable<XValT>::via_type)>
     Value&
     operator=(XValT&& xval)
       noexcept(::std::is_nothrow_assignable<decltype(m_stor)&,
-                  typename details_value::Valuable<XValT>::via_type&&>::value)
-      {
-        details_value::Valuable<XValT>::assign(this->m_stor,
-                           ::std::forward<XValT>(xval));
-        return *this;
-      }
+                        typename details_value::Valuable<XValT>::via_type&&>::value)
+      { details_value::Valuable<XValT>::assign(this->m_stor, ::std::forward<XValT>(xval));
+        return *this;  }
 
-    Value(const Value&) noexcept
-      = default;
+    Value(const Value& other) noexcept
+      : m_stor(other.m_stor)
+      { }
+
+    Value&
+    operator=(const Value& other) noexcept
+      { this->m_stor = other.m_stor;
+        return *this;  }
 
     Value(Value&& other) noexcept
       {
         // Don't play with this at home!
-        ::std::memcpy((void*)this, (void*)&other, sizeof(*this));
-        ::std::memset((void*)&other, 0, sizeof(*this));
+        ::std::memcpy(this->m_bytes, other.m_bytes, sizeof(storage));
+        ::std::memset(other.m_bytes, 0, sizeof(storage));
       }
-
-    Value&
-    operator=(const Value&) noexcept
-      = default;
 
     Value&
     operator=(Value&& other) noexcept
       { return this->swap(other);  }
+
+    Value&
+    swap(Value& other) noexcept
+      {
+        // Don't play with this at home!
+        char temp[sizeof(storage)];
+        ::std::memcpy(temp, this->m_bytes, sizeof(storage));
+        ::std::memcpy(this->m_bytes, other.m_bytes, sizeof(storage));
+        ::std::memcpy(other.m_bytes, temp, sizeof(storage));
+        return *this;
+      }
 
   private:
     void
@@ -102,8 +113,10 @@ class alignas(max_align_t) Value
     ~Value()
       {
         constexpr bmask32 recursive_types = { type_array, type_object };
-        if(recursive_types.get(this->type()))
+        if(recursive_types.test(this->type()))
           this->do_destroy_variant_slow();
+        else
+          this->m_stor.~storage();
       }
 
     // Accessors
@@ -311,19 +324,7 @@ class alignas(max_align_t) Value
       {
         constexpr bmask32 scalar_types = { type_null,
             type_boolean, type_integer, type_real, type_string };
-
-        return scalar_types.get(this->type());
-      }
-
-    Value&
-    swap(Value& other) noexcept
-      {
-        // Don't play with this at home!
-        typename ::std::aligned_union<0, Value>::type temp;
-        ::std::memcpy(&temp, (void*)this, sizeof(*this));
-        ::std::memcpy((void*)this, (void*)&other, sizeof(*this));
-        ::std::memcpy((void*)&other, &temp, sizeof(*this));
-        return *this;
+        return scalar_types.test(this->type());
       }
 
     // This is used by garbage collection.

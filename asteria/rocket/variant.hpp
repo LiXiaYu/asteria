@@ -37,35 +37,42 @@ class variant
     static constexpr size_t alternative_size = sizeof...(altsT);
 
   private:
-    // The first member of this union is used for constexpr initialization.
+    using my_storage = typename aligned_union<0, altsT...>::type;
+    static constexpr size_t my_align = alignof(my_storage);
+
     union {
-      typename alternative_at<0>::type m_first;
-      typename aligned_union<0, altsT...>::type m_stor[1];
+      my_storage m_stor[1];
+
+      // This is used for constexpr initialization.
+      typename alternative_at<0>::type m_init_stor;
     };
-    typename lowest_unsigned<alternative_size - 1>::type m_index;
+
+    union {
+      typename lowest_unsigned<alternative_size - 1>::type m_index;
+
+      // Like above, this eliminates padding bytes for constexpr initialization.
+      typename conditional<(my_align < 4),
+            conditional<(my_align == 1),  uint8_t, uint16_t>,  // 1, 2
+            conditional<(my_align == 4), uint32_t, uint64_t>   // 4, 8
+          >::type::type m_init_index;
+    };
 
   private:
     template<size_t indexT>
     ROCKET_PURE const typename alternative_at<indexT>::type*
     do_cast_storage() const noexcept
-      {
-        return reinterpret_cast<const typename alternative_at<indexT>::type*>(
-                                  this->m_stor);
-      }
+      { return (const typename alternative_at<indexT>::type*) this->m_stor;  }
 
     template<size_t indexT>
     ROCKET_PURE typename alternative_at<indexT>::type*
     do_cast_storage() noexcept
-      {
-        return reinterpret_cast<typename alternative_at<indexT>::type*>(
-                                  this->m_stor);
-      }
+      { return (typename alternative_at<indexT>::type*) this->m_stor;  }
 
   public:
     // 23.7.3.1, constructors
     constexpr
     variant() noexcept(is_nothrow_constructible<typename alternative_at<0>::type>::value)
-      : m_first(), m_index(0)
+      : m_init_stor(), m_init_index()
       { }
 
     template<typename paramT,
@@ -261,6 +268,36 @@ class variant
         return *this;
       }
 
+    // 23.7.3.6, swap
+    variant&
+    swap(variant& other)
+      noexcept(conjunction<is_nothrow_swappable<altsT>...>::value)
+      {
+        auto index_old = this->m_index;
+        auto index_new = other.m_index;
+        if(index_old == index_new) {
+          // Swap both alternatives in place.
+          details_variant::dispatch_xswap<altsT...>(
+                    index_old, this->m_stor, other.m_stor);
+        }
+        else {
+          // Swap active alternatives using an indeterminate buffer.
+          typename aligned_union<0, altsT...>::type backup[1];
+          details_variant::dispatch_move_then_destroy<altsT...>(
+                    index_old, backup, this->m_stor);
+
+          // Move-construct the other alternative in place.
+          details_variant::dispatch_move_then_destroy<altsT...>(
+                    index_new, this->m_stor, other.m_stor);
+          this->m_index = index_new;
+          // Move the backup into `other`.
+          details_variant::dispatch_move_then_destroy<altsT...>(
+                    index_old, other.m_stor, backup);
+          other.m_index = index_old;
+        }
+        return *this;
+      }
+
     // 23.7.3.2, destructor
     ~variant()
       {
@@ -275,7 +312,7 @@ class variant
       }
 
   private:
-    [[noreturn]] ROCKET_NOINLINE void
+    [[noreturn]] ROCKET_NEVER_INLINE void
     do_throw_index_mismatch(size_t yindex, const type_info& ytype) const
       {
         noadl::sprintf_and_throw<invalid_argument>(
@@ -440,36 +477,6 @@ class variant
       {
         return this->emplace<index_of<targetT>::value>(
                          ::std::forward<paramsT>(params)...);
-      }
-
-    // 23.7.3.6, swap
-    variant&
-    swap(variant& other)
-      noexcept(conjunction<is_nothrow_swappable<altsT>...>::value)
-      {
-        auto index_old = this->m_index;
-        auto index_new = other.m_index;
-        if(index_old == index_new) {
-          // Swap both alternatives in place.
-          details_variant::dispatch_xswap<altsT...>(
-                    index_old, this->m_stor, other.m_stor);
-        }
-        else {
-          // Swap active alternatives using an indeterminate buffer.
-          typename aligned_union<0, altsT...>::type backup[1];
-          details_variant::dispatch_move_then_destroy<altsT...>(
-                    index_old, backup, this->m_stor);
-
-          // Move-construct the other alternative in place.
-          details_variant::dispatch_move_then_destroy<altsT...>(
-                    index_new, this->m_stor, other.m_stor);
-          this->m_index = index_new;
-          // Move the backup into `other`.
-          details_variant::dispatch_move_then_destroy<altsT...>(
-                    index_old, other.m_stor, backup);
-          other.m_index = index_old;
-        }
-        return *this;
       }
   };
 

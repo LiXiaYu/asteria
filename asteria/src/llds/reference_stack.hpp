@@ -29,9 +29,17 @@ class Reference_Stack
     operator=(Reference_Stack&& other) noexcept
       { return this->swap(other);  }
 
+    Reference_Stack&
+    swap(Reference_Stack& other) noexcept
+      { ::std::swap(this->m_bptr, other.m_bptr);
+        ::std::swap(this->m_etop, other.m_etop);
+        ::std::swap(this->m_einit, other.m_einit);
+        ::std::swap(this->m_estor, other.m_estor);
+        return *this;  }
+
   private:
     void
-    do_destroy_elements() noexcept;
+    do_destroy_elements(bool xfree) noexcept;
 
     void
     do_reserve_more(uint32_t nadd);
@@ -39,15 +47,8 @@ class Reference_Stack
   public:
     ~Reference_Stack()
       {
-        if(this->m_einit)
-          this->do_destroy_elements();
-
         if(this->m_bptr)
-          ::rocket::freeN<Reference>(this->m_bptr, this->m_estor);
-
-#ifdef ROCKET_DEBUG
-        ::std::memset((void*)this, 0xBA, sizeof(*this));
-#endif
+          this->do_destroy_elements(true);
       }
 
     bool
@@ -62,16 +63,6 @@ class Reference_Stack
     clear() noexcept
       {
         this->m_etop = 0;
-        return *this;
-      }
-
-    Reference_Stack&
-    swap(Reference_Stack& other) noexcept
-      {
-        ::std::swap(this->m_bptr, other.m_bptr);
-        ::std::swap(this->m_etop, other.m_etop);
-        ::std::swap(this->m_einit, other.m_einit);
-        ::std::swap(this->m_estor, other.m_estor);
         return *this;
       }
 

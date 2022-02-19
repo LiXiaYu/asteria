@@ -32,9 +32,17 @@ class Variable_HashMap
     operator=(Variable_HashMap&& other) noexcept
       { return this->swap(other);  }
 
+    Variable_HashMap&
+    swap(Variable_HashMap& other) noexcept
+      { ::std::swap(this->m_bptr, other.m_bptr);
+        ::std::swap(this->m_eptr, other.m_eptr);
+        ::std::swap(this->m_head, other.m_head);
+        ::std::swap(this->m_size, other.m_size);
+        return *this;  }
+
   private:
     void
-    do_destroy_buckets() noexcept;
+    do_destroy_buckets(bool xfree) noexcept;
 
     // This function returns a pointer to either an empty bucket or a
     // bucket containing a key which is equal to `name`, but in no case
@@ -119,16 +127,8 @@ class Variable_HashMap
   public:
     ~Variable_HashMap()
       {
-        if(this->m_head)
-          this->do_destroy_buckets();
-
         if(this->m_bptr)
-          ::rocket::freeN<Bucket>(this->m_bptr,
-                static_cast<size_t>(this->m_eptr - this->m_bptr));
-
-#ifdef ROCKET_DEBUG
-        ::std::memset((void*)this, 0xA6, sizeof(*this));
-#endif
+          this->do_destroy_buckets(true);
       }
 
     bool
@@ -147,21 +147,11 @@ class Variable_HashMap
     clear() noexcept
       {
         if(this->m_head)
-          this->do_destroy_buckets();
+          this->do_destroy_buckets(false);
 
         // Clean invalid data up.
         this->m_head = nullptr;
         this->m_size = 0;
-        return *this;
-      }
-
-    Variable_HashMap&
-    swap(Variable_HashMap& other) noexcept
-      {
-        ::std::swap(this->m_bptr, other.m_bptr);
-        ::std::swap(this->m_eptr, other.m_eptr);
-        ::std::swap(this->m_head, other.m_head);
-        ::std::swap(this->m_size, other.m_size);
         return *this;
       }
 

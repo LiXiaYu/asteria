@@ -44,8 +44,16 @@ class array
     // This class has to be an aggregate.
     value_type m_stor[capacityT];
 
+    array&
+    swap(array& other) noexcept(is_nothrow_swappable<value_type>::value)
+      {
+        for(size_type i = 0; i != capacityT; ++i)
+          noadl::xswap(this->m_stor[i], other.m_stor[i]);
+        return *this;
+      }
+
   private:
-    [[noreturn]] ROCKET_NOINLINE void
+    [[noreturn]] ROCKET_NEVER_INLINE void
     do_throw_subscript_out_of_range(size_type pos, const char* rel) const
       {
         noadl::sprintf_and_throw<out_of_range>(
@@ -252,14 +260,6 @@ class array
         if(pos >= this->size())
           return nullptr;
         return this->mut_data() + pos;
-      }
-
-    array&
-    swap(array& other) noexcept(is_nothrow_swappable<value_type>::value)
-      {
-        for(size_type i = 0; i != capacityT; ++i)
-          noadl::xswap(this->m_stor[i], other.m_stor[i]);
-        return *this;
       }
 
     // element access

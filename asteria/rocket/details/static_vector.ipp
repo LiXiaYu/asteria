@@ -21,19 +21,31 @@ class storage_handle
     using nelem_type      = typename lowest_unsigned<capacityT - 1>::type;
 
   private:
-    nelem_type m_nelem;
+    static constexpr size_t my_align = alignof(value_type);
+
     union {
-      volatile char m_do_not_use;  // suppress warnings about potential use of uninitialized objects
+      nelem_type m_nelem;
+
+      // This eliminates padding bytes for constexpr initialization.
+      typename conditional<(my_align < 4),
+            conditional<(my_align == 1),  uint8_t, uint16_t>,  // 1, 2
+            conditional<(my_align == 4), uint32_t, uint64_t>   // 4, 8
+          >::type::type m_init_nelem;
+    };
+
+    union {
       value_type m_data[capacityT];
+
+      // This suppresses warnings about potential use of uninitialized objects.
+      volatile char m_do_not_use;
     };
 
   public:
     explicit
     storage_handle(const allocator_type& alloc) noexcept
-      : allocator_base(alloc)
+      : allocator_base(alloc),
+        m_init_nelem()
       {
-        this->m_nelem = 0;
-
 #ifdef ROCKET_DEBUG
         ::std::memset(static_cast<void*>(this->m_data), '*', sizeof(m_data));
 #endif
@@ -41,10 +53,9 @@ class storage_handle
 
     explicit
     storage_handle(allocator_type&& alloc) noexcept
-      : allocator_base(::std::move(alloc))
+      : allocator_base(::std::move(alloc)),
+        m_init_nelem()
       {
-        this->m_nelem = 0;
-
 #ifdef ROCKET_DEBUG
         ::std::memset(static_cast<void*>(this->m_data), '*', sizeof(m_data));
 #endif
@@ -58,8 +69,8 @@ class storage_handle
           allocator_traits<allocator_type>::destroy(*this, this->m_data + off);
 
 #ifdef ROCKET_DEBUG
-        this->m_nelem = static_cast<nelem_type>(0xBAD1BEEF);
         ::std::memset(static_cast<void*>(this->m_data), '~', sizeof(m_data));
+        this->m_nelem = static_cast<nelem_type>(0xBAD1BEEF);
 #endif
       }
 
@@ -170,7 +181,7 @@ class storage_handle
       }
 
     void
-    move_from(storage_handle& other)
+    move_from(storage_handle&& other)
       {
         if(this->m_nelem < other.m_nelem) {
           // `*this` is shorter than `other`.
@@ -272,12 +283,10 @@ class vector_iterator
     ROCKET_ENABLE_IF(is_convertible<yvalueT*, valueT*>::value)>
     vector_iterator&
     operator=(const vector_iterator<vectorT, yvalueT>& other) noexcept
-      {
-        this->m_begin = other.m_begin;
+      { this->m_begin = other.m_begin;
         this->m_cur = other.m_cur;
         this->m_end = other.m_end;
-        return *this;
-      }
+        return *this;  }
 
   private:
     valueT*

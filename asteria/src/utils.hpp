@@ -17,7 +17,7 @@ ptrdiff_t
 write_log_to_stderr(const char* file, long line, cow_string&& msg) noexcept;
 
 template<typename... ParamsT>
-ROCKET_NOINLINE ROCKET_FLATTEN cow_string
+ROCKET_NEVER_INLINE ROCKET_FLATTEN cow_string
 format_string(const char* templ, const ParamsT&... params)
   {
     ::rocket::tinyfmt_str fmt;
@@ -90,24 +90,37 @@ enum : uint8_t
   };
 
 ROCKET_CONST inline uint8_t
-get_cctype(char c) noexcept
-  {
-    size_t m = static_cast<uint8_t>(c);
-    if(m >= 128)
-      return 0;
-    return details_utils::cctype_table[m];
-  }
+get_cctype(char ch) noexcept
+  { return (ch < 0) ? 0 : details_utils::cctype_table[ch & 0x7F];  }
 
 ROCKET_CONST inline bool
-is_cctype(char c, uint8_t mask) noexcept
-  { return noadl::get_cctype(c) & mask;  }
+is_cctype(char ch, uint8_t mask) noexcept
+  { return noadl::get_cctype(ch) & mask;  }
 
 // Numeric conversion
 ROCKET_CONST inline bool
-is_convertible_to_integer(double val) noexcept
+is_convertible_to_int64(double val) noexcept
+  { return (-0x1p63 <= val) && (val < 0x1p63);  }
+
+ROCKET_CONST inline bool
+is_exact_int64(double val) noexcept
+  { return noadl::is_convertible_to_int64(val) && (::std::trunc(val) == val);  }
+
+inline int64_t
+safe_double_to_int64(double val)
   {
-    return ::std::islessequal(-0x1p63, val) &&
-           ::std::isless(val, 0x1p63);
+    double fval = ::std::trunc(val);
+    if(fval != val)
+      ::rocket::sprintf_and_throw<::std::invalid_argument>(
+            "safe_double_to_int64: value `%.17g` is not an exact integer",
+            val);
+
+    if(!noadl::is_convertible_to_int64(val))
+      ::rocket::sprintf_and_throw<::std::invalid_argument>(
+            "safe_double_to_int64: value `%.17g` is out of range for an `int64`",
+            val);
+
+    return static_cast<int64_t>(val);
   }
 
 // C-style quoting

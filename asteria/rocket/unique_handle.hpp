@@ -78,11 +78,15 @@ class unique_handle
     // 23.11.1.2.3, assignment
     unique_handle&
     operator=(unique_handle&& other) noexcept
-      {
-        this->m_sth.as_closer() = ::std::move(other.m_sth.as_closer());
+      { this->m_sth.as_closer() = ::std::move(other.m_sth.as_closer());
         this->reset(other.m_sth.release());
-        return *this;
-      }
+        return *this;  }
+
+    unique_handle&
+    swap(unique_handle& other) noexcept
+      { noadl::xswap(this->m_sth.as_closer(), other.m_sth.as_closer());
+        this->m_sth.exchange_with(other.m_sth);
+        return *this;  }
 
   public:
     // 23.11.1.2.4, observers
@@ -131,14 +135,6 @@ class unique_handle
       {
         this->m_sth.reset(::std::move(hv_new));
         this->m_sth.as_closer() = cl;
-        return *this;
-      }
-
-    unique_handle&
-    swap(unique_handle& other) noexcept
-      {
-        noadl::xswap(this->m_sth.as_closer(), other.m_sth.as_closer());
-        this->m_sth.exchange_with(other.m_sth);
         return *this;
       }
   };

@@ -10,7 +10,7 @@
 
 namespace asteria {
 
-class alignas(max_align_t) Reference
+class Reference
   {
   public:
     enum Index : uint8_t
@@ -27,13 +27,17 @@ class alignas(max_align_t) Reference
     rcfwdp<Variable> m_var;
     rcfwdp<PTC_Arguments> m_ptca;
     cow_vector<Reference_Modifier> m_mods;
-    Index m_index;
+
+    union {
+      Index m_index;
+      void* m_init_index;  // force initialization of padding bits
+    };
 
   public:
     // Constructors and assignment operators
     constexpr
     Reference() noexcept
-      : m_index(index_invalid)
+      : m_init_index()
       { }
 
     Reference(const Reference& other) noexcept
@@ -48,46 +52,47 @@ class alignas(max_align_t) Reference
 
     Reference&
     operator=(const Reference& other) noexcept
-      {
-        this->do_copy_partial(other);
+      { this->do_copy_partial(other);
         this->m_mods = other.m_mods;
         this->m_index = other.m_index;
-        return *this;
-      }
+        return *this;  }
 
     Reference&
     operator=(Reference&& other) noexcept
-      {
-        this->do_swap_partial(other);
-        this->m_mods.swap(other.m_mods);
+      { this->do_swap_partial(other);
+        this->m_mods = ::std::move(other.m_mods);
         this->m_index = other.m_index;
-        return *this;
-      }
+        return *this;  }
+
+    Reference&
+    swap(Reference& other) noexcept
+      { this->do_swap_partial(other);
+        this->m_mods.swap(other.m_mods);
+        ::std::swap(this->m_index, other.m_index);
+        return *this;  }
 
   private:
-    void
-    do_copy_partial(const Reference& other) noexcept
+    ROCKET_ALWAYS_INLINE void
+    do_copy_partial(const Reference& other)
       {
-        // Note not all fields have to be copied.
-        uint32_t type = other.m_index;
-        if(ROCKET_UNEXPECT(type == index_temporary))
+        const uint32_t index = other.m_index;
+        if(index == index_temporary)
           this->m_value = other.m_value;
-        else if(ROCKET_UNEXPECT(type == index_variable))
+        if(index == index_variable)
           this->m_var = other.m_var;
-        else if(ROCKET_UNEXPECT(type == index_ptc_args))
+        if(index == index_ptc_args)
           this->m_ptca = other.m_ptca;
       }
 
-    void
-    do_swap_partial(Reference& other) noexcept
+    ROCKET_ALWAYS_INLINE void
+    do_swap_partial(Reference& other)
       {
-        // Determine which fields have to be swapped.
-        bmask32 mask = { this->m_index, other.m_index };
-        if(ROCKET_UNEXPECT(mask.get(index_temporary)))
+        const bmask32 mask = { this->m_index, other.m_index };
+        if(mask.test(index_temporary))
           this->m_value.swap(other.m_value);
-        if(ROCKET_UNEXPECT(mask.get(index_variable)))
+        if(mask.test(index_variable))
           this->m_var.swap(other.m_var);
-        if(ROCKET_UNEXPECT(mask.get(index_ptc_args)))
+        if(mask.test(index_ptc_args))
           this->m_ptca.swap(other.m_ptca);
       }
 
@@ -187,15 +192,6 @@ class alignas(max_align_t) Reference
         return *this;
       }
 
-    Reference&
-    swap(Reference& other) noexcept
-      {
-        this->do_swap_partial(other);
-        this->m_mods.swap(other.m_mods);
-        ::std::swap(this->m_index, other.m_index);
-        return *this;
-      }
-
     // This is used by garbage collection.
     void
     get_variables(Variable_HashMap& staged, Variable_HashMap& temp) const;
@@ -204,9 +200,23 @@ class alignas(max_align_t) Reference
     // For instance, the expression `obj.x[42]` results in a reference having two
     // modifiers. Modifiers can be removed to yield references to ancestor objects.
     // Removing the last modifier shall yield the constant `null`.
-    size_t
-    count_modifiers() const noexcept
-      { return this->m_mods.size();  }
+    const cow_vector<Reference_Modifier>&
+    get_modifiers() const noexcept
+      { return this->m_mods;  }
+
+    Reference&
+    set_modifiers(const cow_vector<Reference_Modifier>& mods) noexcept
+      {
+        this->m_mods = mods;
+        return *this;
+      }
+
+    Reference&
+    clear_modifiers() noexcept
+      {
+        this->m_mods.clear();
+        return *this;
+      }
 
     Reference&
     push_modifier_array_index(int64_t index)
