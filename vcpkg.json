@@ -1,0 +1,13 @@
+{
+    "name": "asteria",
+    "version": "1",
+    "description": "The Asteria Programming Language",
+    "dependencies": [
+      "zlib",
+      "pcre2",
+      "openssl",
+      "libiconv",
+      "stduuid",
+      "pkgconf"
+    ]
+  }

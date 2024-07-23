@@ -12,7 +12,8 @@
 ## NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 ## CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-project('asteria', 'cpp', version: '1.1.alpha')
+project('asteria', 'cpp', version: '1.1.alpha', 
+        default_options: ['warning_level=3', 'cpp_std=c++17'])
 
 #===========================================================
 # List of files
@@ -340,25 +341,26 @@ if get_option('enable-debug-checks')
 endif
 
 add_project_arguments(
-    '-Wall', '-Wextra', '-Winvalid-pch',
+    '/std:c++20',
     '-D_FILE_OFFSET_BITS=64', '-D_POSIX_C_SOURCE=200809', '-D_DEFAULT_SOURCE',
-    '-D_DARWIN_C_SOURCE', '-U_FORTIFY_SOURCE', '-fno-stack-protector',
-    '-fstrict-aliasing', '-fstrict-overflow', '-fmerge-all-constants',
-    '-frounding-math', '-fno-math-errno', '-fno-trapping-math', '-fno-ident',
-    '-fno-devirtualize-speculatively', '-fno-semantic-interposition',
-    '-Werror=conversion', '-Werror=sign-compare', '-Werror=sign-conversion',
-    '-Werror=write-strings', '-Werror=return-type', '-Werror=double-promotion',
-    '-Wmissing-declarations', '-Wmissing-field-initializers', '-Wshadow',
-    '-Wsuggest-attribute=noreturn', '-Wswitch-enum', '-Wunused-function',
-    '-Wunused-label', '-Wunused-local-typedefs', '-Wunused-but-set-variable',
-    '-Wunused-but-set-parameter',
+    '-D_DARWIN_C_SOURCE', '-U_FORTIFY_SOURCE',
     language: [ 'c', 'cpp' ])
 
-add_project_arguments(
-    '-std=c++17', '-fno-elide-constructors', '-fvisibility-inlines-hidden',
-    '-fnothrow-opt', '-fno-enforce-eh-specs', '-Wzero-as-null-pointer-constant',
-    '-Wno-redundant-move', '-Werror=non-virtual-dtor',
-    language: 'cpp')
+# add_project_arguments(
+#     '-fno-elide-constructors', '-fvisibility-inlines-hidden',
+#     '-fnothrow-opt', '-fno-enforce-eh-specs',
+#     language: 'cpp')
+
+
+#===========================================================
+# Vcpkg Dependencies
+#===========================================================
+#would like to use variables from meson-vcpkg.txt here to refine
+#the vcpkg call but meson won't let me do that.
+vcpkg = find_program('vcpkg', required : true)
+run_command(vcpkg, 'install', '--x-wait-for-lock',
+                              '--x-manifest-root=' + meson.current_source_dir())
+
 
 #===========================================================
 # Dependencies
@@ -366,8 +368,8 @@ add_project_arguments(
 dep_zlib = dependency('zlib', version: '>= 1.2.9')
 dep_pcre2 = dependency('libpcre2-8')
 dep_openssl = dependency('openssl')
-dep_iconv = dependency('iconv')
-dep_uuid = dependency('uuid')
+dep_iconv = dependency('libiconv')
+dep_uuid = dependency('stduuid')
 dep_editline = disabler()
 
 if get_option('enable-repl')

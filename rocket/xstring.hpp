@@ -5,6 +5,20 @@
 #define ROCKET_XSTRING_
 
 #include "fwd.hpp"
+
+#ifdef _MSC_VER
+char* stpcpy(char* dest, const char* src)
+{
+  size_t len = strlen(src);
+  return (char*) memcpy(dest + len, src, len) + len;
+}
+wchar_t* wcpcpy(wchar_t* dest, const wchar_t* src)
+{
+  size_t len = wcslen(src);
+  return (wchar_t*) memcpy(dest + len, src, sizeof(wchar_t) * len) + len;
+}
+#endif
+
 namespace rocket {
 
 #include "details/xstring.ipp"

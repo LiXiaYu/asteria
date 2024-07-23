@@ -4,6 +4,7 @@
 #ifndef ROCKET_XSTRING_
 #  error Please include <rocket/xstring.hpp> instead.
 #endif
+
 namespace details_xstring {
 
 inline namespace maybe_constexpr

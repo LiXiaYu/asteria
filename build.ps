@@ -1,0 +1,3 @@
+# run in x64 native tools command prompt for VS 
+python C:/src/vcpkg/downloads/tools/meson-1.3.2-c18b6a/meson.py setup --reconfigure build_debug -Denable-repl=false -Dcpp_std=c++17 -Dwarning_level=3 --native-file ./meson-vcpkg.txt
+ninja -C build_debug

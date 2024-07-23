@@ -11,7 +11,11 @@
 #include "tinybuf.hpp"
 #include "ascii_numput.hpp"
 #include <chrono>
+
+#ifndef _MSC_VER
 #include <cxxabi.h>
+#endif
+
 namespace rocket {
 
 // Differences from `std::basic_ostream`:
